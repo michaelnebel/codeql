@@ -4,13 +4,15 @@
 
 private import java as J
 private import semmle.code.java.dataflow.internal.DataFlowNodes
-private import semmle.code.java.dataflow.internal.DataFlowPrivate
+// private import semmle.code.java.dataflow.internal.DataFlowPrivate
 private import semmle.code.java.dataflow.internal.ContainerFlow as ContainerFlow
 private import semmle.code.java.dataflow.DataFlow as Df
 private import semmle.code.java.dataflow.TaintTracking as Tt
+private import semmle.code.java.dataflow.internal.TaintTrackingUtil as TaintTrackingUtil
 import semmle.code.java.dataflow.ExternalFlow as ExternalFlow
 import semmle.code.java.dataflow.internal.DataFlowImplCommon as DataFlowImplCommon
 import semmle.code.java.dataflow.internal.DataFlowPrivate as DataFlowPrivate
+import semmle.code.java.dataflow.internal.ContentDataFlow
 
 module DataFlow = Df::DataFlow;
 
@@ -56,6 +58,16 @@ private predicate isRelevantForModels(J::Callable api) {
   not isInTestFile(api.getCompilationUnit().getFile()) and
   not isJdkInternal(api.getCompilationUnit()) and
   not api instanceof J::MainMethod
+}
+
+/**
+ * Holds if content `c` is either a field or synthetic field of a relevant type
+ * or a container like content.
+ */
+predicate isRelevantContent(DataFlow::Content c) {
+  isRelevantType(c.(DataFlow::FieldContent).getField().getType()) or
+  isRelevantType(c.(DataFlow::SyntheticFieldContent).getField().getType()) or
+  DataFlowPrivate::containerContent(c)
 }
 
 /**
@@ -144,16 +156,7 @@ predicate isRelevantType(J::Type t) {
  */
 string qualifierString() { result = "Argument[-1]" }
 
-private string parameterAccess(J::Parameter p) {
-  if
-    p.getType() instanceof J::Array and
-    not isPrimitiveTypeUsedForBulkData(p.getType().(J::Array).getElementType())
-  then result = "Argument[" + p.getPosition() + "].ArrayElement"
-  else
-    if p.getType() instanceof ContainerFlow::ContainerType
-    then result = "Argument[" + p.getPosition() + "].Element"
-    else result = "Argument[" + p.getPosition() + "]"
-}
+private string parameterAccess(J::Parameter p) { result = "Argument[" + p.getPosition() + "]" }
 
 /**
  * Gets the CSV string representation of the parameter node `p`.
@@ -185,13 +188,6 @@ string returnNodeAsOutput(DataFlowImplCommon::ReturnNodeExt node) {
  */
 J::Callable returnNodeEnclosingCallable(DataFlowImplCommon::ReturnNodeExt ret) {
   result = DataFlowImplCommon::getNodeEnclosingCallable(ret).asCallable()
-}
-
-/**
- * Holds if `node` is an own instance access.
- */
-predicate isOwnInstanceAccessNode(ReturnNode node) {
-  node.asExpr().(J::ThisAccess).isOwnInstanceAccess()
 }
 
 /**
@@ -236,4 +232,54 @@ predicate isRelevantSinkKind(string kind) {
   not kind = "logging" and
   not kind.matches("regex-use%") and
   not kind = "write-file"
+}
+
+string printContent(DataFlow::Content c) {
+  exists(J::Field f |
+    f = c.(DataFlow::FieldContent).getField() and
+    if f.isPublic()
+    then result = "Field[" + f.getQualifiedName() + "]"
+    else result = "SyntheticField[" + f.getQualifiedName() + "]"
+  )
+  or
+  c instanceof DataFlow::ArrayContent and
+  result = "ArrayElement"
+  or
+  c instanceof DataFlow::MapKeyContent and
+  result = "MapKey"
+  or
+  c instanceof DataFlow::MapValueContent and
+  result = "MapValue"
+  or
+  exists(string f |
+    f = c.(DataFlow::SyntheticFieldContent).getField() and
+    result = "SyntheticField[" + f + "]"
+  )
+}
+
+predicate taintStep(DataFlow::Node nodeFrom, DataFlow::Node nodeTo) {
+  TaintTrackingUtil::defaultAdditionalTaintStep(nodeFrom, nodeTo) and
+  not DataFlowPrivate::readStep(nodeFrom, _, nodeTo)
+}
+
+int accessPathLimit() { result = 2 }
+
+/**
+ * Holds if the step from `node1` to `node2` should be taken into account when
+ * capturing flow sources.
+ */
+predicate isRelevantSourceTaintStep(DataFlow::Node node1, DataFlow::Node node2) {
+  exists(DataFlow::Content f |
+    DataFlowPrivate::readStep(node1, f, node2) and
+    if f instanceof DataFlow::FieldContent
+    then isRelevantType(f.(DataFlow::FieldContent).getField().getType())
+    else
+      if f instanceof DataFlow::SyntheticFieldContent
+      then isRelevantType(f.(DataFlow::SyntheticFieldContent).getField().getType())
+      else any()
+  )
+  or
+  exists(DataFlow::Content f | DataFlowPrivate::storeStep(node1, f, node2) |
+    DataFlowPrivate::containerContent(f)
+  )
 }
