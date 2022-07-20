@@ -13,7 +13,11 @@ class TargetApi = TargetApiSpecific;
  */
 bindingset[input, output, kind]
 private string asSummaryModel(TargetApi api, string input, string output, string kind) {
-  result = asPartialModel(api) + input + ";" + output + ";generated:" + kind
+  result =
+    asPartialModel(api) + input + ";" //
+      + output + ";" //
+      + kind + ";" //
+      + "generated"
 }
 
 /**
