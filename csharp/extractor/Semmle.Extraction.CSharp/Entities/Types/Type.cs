@@ -39,7 +39,7 @@ namespace Semmle.Extraction.CSharp.Entities
             }
 
             // (1) public class { ... } is a broken type and doesn't have a name.
-            // (2) public class var { ... } is a an allowed type, but it overrides the var keyword for all uses.
+            // (2) public class var { ... } is an allowed type, but it overrides the `var` keyword for all uses.
             //     It is probably a better heuristic to treat it as a broken type.
             return string.IsNullOrEmpty(symbol.Name) || symbol.Name == "var";
         }
