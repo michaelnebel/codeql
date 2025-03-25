@@ -65,6 +65,11 @@ class QlRefDocument extends YamlDocument {
     )
   }
 
+  /**
+   * Holds if this `.qlref` file is either
+   * - named `PrintAst.qlref`, or
+   * - contains the string `PrintAst` in the `query` field.
+   */
   predicate isPrintAst() {
     this.getFile().getStem() = "PrintAst"
     or
