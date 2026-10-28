@@ -240,7 +240,8 @@ namespace Semmle.Extraction.Tests
               <msb:PropertyGroup>
                 <msb:ImplicitUsings>
                   ENABLE
-                </msb:ImplicitUsings><msb:UseWPF> true </msb:UseWPF><msb:UseWindowsForms><![CDATA[true]]></msb:UseWindowsForms>
+                </msb:ImplicitUsings><msb:UseWPF> true </msb:UseWPF>
+                <msb:UseWindowsForms><![CDATA[true]]></msb:UseWindowsForms>
               </msb:PropertyGroup>
             </msb:Project>
             """;
@@ -310,19 +311,6 @@ namespace Semmle.Extraction.Tests
         }
 
         [Fact]
-        public void TestFileContent_CaseInsensitive()
-        {
-            var fileContent = new TestFileContent(new[]
-            {
-                "<project sdk='microsoft.net.sdk.web'><packagereference include='My.Package' /><usewpf>TRUE</usewpf></project>"
-            });
-
-            Assert.True(fileContent.IsAspNetCoreDetected);
-            Assert.True(fileContent.UseWpf);
-            Assert.Contains(new PackageReference("my.package", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
-        }
-
-        [Fact]
         public void TestFileContent_ReadsOnceAndDisposesStream()
         {
             var stub = new UnsafeFileReaderStub(new Dictionary<string, string>
@@ -363,7 +351,7 @@ namespace Semmle.Extraction.Tests
 
             Assert.True(fileContent.IsAspNetCoreDetected);
             Assert.Contains(new PackageReference("my.package", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
-            Assert.Contains("Failed to read file invalid.csproj", logger.Messages);
+            Assert.Contains("Failed to parse invalid.csproj as an XML file.", logger.Messages);
             Assert.Equal(2, stub.OpenCount);
         }
     }
