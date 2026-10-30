@@ -186,6 +186,41 @@ class MissedWhereOpportunity
         }
     }
 
+    public void M14(IEnumerable<string> privateRegistryFeeds, ICollection<Uri> uris)
+    {
+        // GOOD: The out variable is used in the loop body and would be out of scope after filtering.
+        foreach (var registry in privateRegistryFeeds)
+        {
+            if (Uri.TryCreate(registry, UriKind.Absolute, out var uri))
+            {
+                uris.Add(uri);
+            }
+        }
+    }
+
+    public void M15(IEnumerable<string> values)
+    {
+        // GOOD: The out variable is used after the if statement in the loop body.
+        foreach (var value in values)
+        {
+            if (!int.TryParse(value, out var parsed))
+                continue;
+            Console.WriteLine(parsed);
+        }
+    }
+
+    public void M16(IEnumerable<string> values)
+    {
+        // BAD: The out variable is used only in the condition, so filtering is valid.
+        foreach (var value in values)
+        {
+            if (int.TryParse(value, out var parsed) && parsed > 0)
+            {
+                Console.WriteLine(value);
+            }
+        } // $ Alert
+    }
+
     public class NonEnumerableClass
     {
         public IEnumerator<int> GetEnumerator() => throw null;
