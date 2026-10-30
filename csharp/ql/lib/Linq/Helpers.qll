@@ -259,6 +259,16 @@ private predicate linqWhereCandidateCase2(Stmt s, Expr e) {
     )
 }
 
+private predicate usesOutVariableOutsideCondition(ForEachStmtGenericEnumerable fes, Expr condition) {
+  exists(LocalVariableDeclExpr outDecl, LocalVariableAccess access |
+    outDecl.isOutArgument() and
+    outDecl = condition.getAChildExpr*() and
+    access = outDecl.getVariable().getAnAccess() and
+    access = fes.getAChild*() and
+    not access = condition.getAChildExpr*()
+  )
+}
+
 /**
  * Holds if `foreach` statement `fes` could be converted to a `.Where()` call.
  * That is, first statement of the loop is an `if`, which accesses the loop
@@ -266,12 +276,15 @@ private predicate linqWhereCandidateCase2(Stmt s, Expr e) {
  * else in the loop than the `if`.
  */
 predicate missedWhereOpportunity(ForEachStmtGenericEnumerable fes, IfStmt is) {
-  // The body of the `if` is a continue.
-  LinqFilterOpportunity<linqWhereCandidateCase1/2>::missed(fes, is)
-  or
-  // There's nothing else in the loop than the `if`.
-  LinqFilterOpportunity<linqWhereCandidateCase2/2>::missed(fes, is) and
-  numStmts(fes) = 1
+  not usesOutVariableOutsideCondition(fes, is.getCondition()) and
+  (
+    // The body of the `if` is a continue.
+    LinqFilterOpportunity<linqWhereCandidateCase1/2>::missed(fes, is)
+    or
+    // There's nothing else in the loop than the `if`.
+    LinqFilterOpportunity<linqWhereCandidateCase2/2>::missed(fes, is) and
+    numStmts(fes) = 1
+  )
 }
 
 private predicate linqFirstOrDefaultCandidate(Stmt s, Expr e) {
