@@ -31,7 +31,7 @@ namespace Semmle.Extraction.CSharp.DependencyFetching
         /// <summary>
         /// Gets whether the reachability of the NuGet feeds should be checked before using them for restore.
         /// </summary>
-        public bool CheckNugetFeedResponsiveness { get; } = EnvironmentVariables.GetBooleanOptOut(EnvironmentVariableNames.CheckNugetFeedResponsiveness);
+        public bool CheckNugetFeedResponsiveness { get; init; } = EnvironmentVariables.GetBooleanOptOut(EnvironmentVariableNames.CheckNugetFeedResponsiveness);
 
         private readonly Lazy<ImmutableHashSet<string>> lazyExplicitFeeds;
 
@@ -244,6 +244,30 @@ namespace Semmle.Extraction.CSharp.DependencyFetching
             var feedsToUse = FeedsToUse(path);
 
             return RestoreFeeds(feedsToUse);
+        }
+
+        /// <summary>
+        /// Constructs the NuGet CLI restore sources, excluding private registries that require the registry proxy.
+        /// An empty list leaves source selection to NuGet only when no filtering or default feeds are needed.
+        /// </summary>
+        public List<string> MakeNugetExeRestoreFeeds(string path)
+        {
+            var feedsToUse = FeedsToUse(path).ToList();
+            var defaultFeeds = CheckNugetFeedResponsiveness ? ReachableDefaultFeeds : DefaultFeeds;
+            var useDefaultFeeds = feedsToUse.Count == 0 && defaultFeeds.Count > 0;
+
+            if (!CheckNugetFeedResponsiveness && !HasPrivateRegistryFeeds && !useDefaultFeeds)
+            {
+                return [];
+            }
+
+            if (useDefaultFeeds)
+            {
+                feedsToUse.AddRange(defaultFeeds);
+            }
+
+            // Filter after selecting defaults so private base feeds cannot be reintroduced.
+            return RestoreFeeds(feedsToUse.Where(feed => !privateRegistryFeeds.Contains(feed)));
         }
 
         private (int initialTimeout, int tryCount) GetFeedRequestSettings(bool isFallback)

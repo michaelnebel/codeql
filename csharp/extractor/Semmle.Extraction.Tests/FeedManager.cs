@@ -248,6 +248,99 @@ namespace Semmle.Extraction.Tests
             ], feedsToUse);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void TestNugetExeRestoreFeedsExcludePrivateRegistries(bool checkResponsiveness)
+        {
+            var logger = new LoggerStub();
+            var dotnet = new DotNetStub([], [], [],
+                ["E https://example.com/registry2", "E https://feed.from/folder1", "E https://feed.from/folder2"]);
+            using var feedManager = new FeedManager(logger, dotnet, new RegistryProxyStub(),
+                new FileProviderStub(), new FeedManagerIOStub(["https://feed.from/folder2"]))
+            {
+                CheckNugetFeedResponsiveness = checkResponsiveness
+            };
+
+            var feeds = feedManager.MakeNugetExeRestoreFeeds("/path/to/packages.config").ToHashSet();
+            Assert.True(feeds.SetEquals(checkResponsiveness
+                ? ["https://feed.from/folder1"]
+                : ["https://feed.from/folder1", "https://feed.from/folder2"]));
+            Assert.Contains("https://example.com/registry2", feedManager.MakeRestoreFeeds("/path/to/project.csproj"));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void TestNugetExeRestoreFeedsExcludePrivateBaseRegistries(bool checkResponsiveness)
+        {
+            var logger = new LoggerStub();
+            var dotnet = new DotNetStub([], [], [],
+                ["E https://api.nuget.org/v3/index.json", "E https://feed.from/folder1"]);
+            using var feedManager = new FeedManager(logger, dotnet, new RegistryProxyStubWithBaseUrls(),
+                new FileProviderStub(), new FeedManagerIOStub([]))
+            {
+                CheckNugetFeedResponsiveness = checkResponsiveness
+            };
+
+            Assert.Equal(["https://feed.from/folder1"], feedManager.MakeNugetExeRestoreFeeds("/path/to/packages.config"));
+        }
+
+        [Theory]
+        [InlineData(true, false)]
+        [InlineData(false, false)]
+        [InlineData(true, true)]
+        [InlineData(false, true)]
+        public void TestNugetExeRestoreFeedsWithOnlyPrivateRegistries(bool checkResponsiveness, bool unreachable)
+        {
+            var logger = new LoggerStub();
+            var registryProxy = new RegistryProxyStubWithBaseUrls();
+            var dotnet = new DotNetStub([], [], [], ["E https://api.nuget.org/v3/index.json"]);
+            using var feedManager = new FeedManager(logger, dotnet, registryProxy,
+                new FileProviderStub(), new FeedManagerIOStub(unreachable ? registryProxy.RegistryURLs.ToList() : []))
+            {
+                CheckNugetFeedResponsiveness = checkResponsiveness
+            };
+
+            var source = Assert.Single(feedManager.MakeNugetExeRestoreFeeds("/path/to/packages.config"));
+            Assert.True(Path.IsPathFullyQualified(source));
+            Assert.True(Directory.Exists(source));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void TestNugetExeRestoreFeedsWithoutPrivateRegistries(bool checkResponsiveness)
+        {
+            var logger = new LoggerStub();
+            var dotnet = new DotNetStub([], [], [], ["E https://feed.from/folder1"]);
+            using var feedManager = new FeedManager(logger, dotnet, null,
+                new FileProviderStub(), new FeedManagerIOStub([]))
+            {
+                CheckNugetFeedResponsiveness = checkResponsiveness
+            };
+
+            Assert.Equal(checkResponsiveness ? ["https://feed.from/folder1"] : [],
+                feedManager.MakeNugetExeRestoreFeeds("/path/to/packages.config"));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void TestNugetExeRestoreFeedsUseDefaults(bool checkResponsiveness)
+        {
+            var logger = new LoggerStub();
+            var dotnet = new DotNetStub([], [], [], []);
+            using var feedManager = new FeedManager(logger, dotnet, null,
+                new FileProviderStub(), new FeedManagerIOStub([]))
+            {
+                CheckNugetFeedResponsiveness = checkResponsiveness
+            };
+
+            Assert.Equal(["https://api.nuget.org/v3/index.json"],
+                feedManager.MakeNugetExeRestoreFeeds("/path/to/packages.config"));
+        }
+
         /// <summary>
         /// Verify that `FeedManager` correctly computes the default feeds and reachable default feeds
         /// when no private registries are configured.
