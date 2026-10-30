@@ -29,9 +29,9 @@ namespace Semmle.Extraction.Tests
 
     internal class TestFileContent : FileContent
     {
-        public TestFileContent(IEnumerable<string> lines, string file = "test1.csproj") : base(new LoggerStub(),
+        public TestFileContent(string content, string file = "test1.csproj") : base(new LoggerStub(),
             new[] { file },
-            new UnsafeFileReaderStub(new Dictionary<string, string> { [file] = string.Join(Environment.NewLine, lines) }))
+            new UnsafeFileReaderStub(new Dictionary<string, string> { [file] = content }))
         { }
     }
 
@@ -40,135 +40,87 @@ namespace Semmle.Extraction.Tests
         [Fact]
         public void TestFileContent1()
         {
-            // Setup
-            var lines = new List<string>()
-            {
-                "<Project Sdk=\"Microsoft.NET.Sdk\">",
-                "<PackageReference Include=\"DotNetAnalyzers.DocumentationAnalyzers\" Version=\"1.0.0-beta.59\" PrivateAssets=\"all\" />",
-                "<PackageReference Version=\"7.0.0\" Include=\"Microsoft.CodeAnalysis.NetAnalyzers\" PrivateAssets=\"all\" />",
-                "<PackageReference Include=\"StyleCop.Analyzers\" Version=\"1.2.0-beta.406\"></PackageReference>",
-                "<!-- <PackageReference Include=\"NUnit\" Version=\"3.10.1\" /> -->",
-                "<FrameworkReference Include=\"My.Framework\"/>",
-                "</Project>"
-            };
-            var fileContent = new TestFileContent(lines);
+            var fileContent = new TestFileContent(
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PackageReference Include="DotNetAnalyzers.DocumentationAnalyzers" Version="1.0.0-beta.59" PrivateAssets="all" />
+              <PackageReference Version="7.0.0" Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
+              <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.406"></PackageReference>
+              <!-- <PackageReference Include="NUnit" Version="3.10.1" /> -->
+              <FrameworkReference Include="My.Framework"/>
+            </Project>
+            """);
 
-            // Execute
-            var allPackages = fileContent.AllPackages;
-            var useAspNetDlls = fileContent.UseAspNetCoreDlls;
-
-            // Verify
-            Assert.False(useAspNetDlls);
-            Assert.Equal(3, allPackages.Count);
-            Assert.Contains(new PackageReference("DotNetAnalyzers.DocumentationAnalyzers".ToLowerInvariant(), PackageReferenceSource.SdkCsProj), allPackages);
-            Assert.Contains(new PackageReference("Microsoft.CodeAnalysis.NetAnalyzers".ToLowerInvariant(), PackageReferenceSource.SdkCsProj), allPackages);
-            Assert.Contains(new PackageReference("StyleCop.Analyzers".ToLowerInvariant(), PackageReferenceSource.SdkCsProj), allPackages);
+            Assert.False(fileContent.UseAspNetCoreDlls);
+            Assert.Equal(3, fileContent.AllPackages.Count);
+            Assert.Contains(new PackageReference("dotnetanalyzers.documentationanalyzers", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
+            Assert.Contains(new PackageReference("microsoft.codeanalysis.netanalyzers", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
+            Assert.Contains(new PackageReference("stylecop.analyzers", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
         }
 
         [Fact]
         public void TestFileContent2()
         {
-            // Setup
-            var lines = new List<string>()
-                {
-                    "<Project Sdk=\"Microsoft.NET.Sdk.Web\">",
-                    "<FrameworkReference Include=\"My.Framework\"/>",
-                    "<PackageReference Version=\"7.0.0\" Include=\"Microsoft.CodeAnalysis.NetAnalyzers\" PrivateAssets=\"all\" />",
-                    "<PackageReference Include=\"StyleCop.Analyzers\" Version=\"1.2.0-beta.406\" />",
-                    "</Project>"
-                };
-            var fileContent = new TestFileContent(lines);
+            var fileContent = new TestFileContent(
+            """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <FrameworkReference Include="My.Framework"/>
+              <PackageReference Version="7.0.0" Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
+              <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.406" />
+            </Project>
+            """);
 
-            // Execute
-            var useAspNetDlls = fileContent.UseAspNetCoreDlls;
-            var allPackages = fileContent.AllPackages;
-
-            // Verify
-            Assert.True(useAspNetDlls);
-            Assert.Equal(2, allPackages.Count);
-            Assert.Contains(new PackageReference("Microsoft.CodeAnalysis.NetAnalyzers".ToLowerInvariant(), PackageReferenceSource.SdkCsProj), allPackages);
-            Assert.Contains(new PackageReference("StyleCop.Analyzers".ToLowerInvariant(), PackageReferenceSource.SdkCsProj), allPackages);
+            Assert.True(fileContent.UseAspNetCoreDlls);
+            Assert.Equal(2, fileContent.AllPackages.Count);
+            Assert.Contains(new PackageReference("microsoft.codeanalysis.netanalyzers", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
+            Assert.Contains(new PackageReference("stylecop.analyzers", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
         }
 
-        private static void CsProjSettingsTest(string line, bool expected, Func<FileContent, bool> func)
+        private static void AssertSetting(string xml, Func<FileContent, bool> setting, bool expected)
         {
-            // Setup
-            var lines = new List<string>()
-                {
-                    line
-                };
-            var fileContent = new TestFileContent(lines);
-
-            // Execute
-            var actual = func(fileContent);
-
-            // Verify
-            Assert.Equal(expected, actual);
+            Assert.Equal(expected, setting(new TestFileContent(xml)));
         }
 
-        [Fact]
-        public void TestFileContent_ImplicitUsings0()
+        [Theory]
+        [InlineData("false", false)]
+        [InlineData("true", true)]
+        [InlineData("enable", true)]
+        public void TestFileContent_ImplicitUsings(string value, bool expected)
         {
-            CsProjSettingsTest("<ImplicitUsings>false</ImplicitUsings>", false, fc => fc.UseImplicitUsings);
+            AssertSetting($"<Project><ImplicitUsings>{value}</ImplicitUsings></Project>", fc => fc.UseImplicitUsings, expected);
         }
 
-        [Fact]
-        public void TestFileContent_ImplicitUsings1()
+        [Theory]
+        [InlineData("false", false)]
+        [InlineData("true", true)]
+        public void TestFileContent_UseWpf(string value, bool expected)
         {
-            CsProjSettingsTest("<ImplicitUsings>true</ImplicitUsings>", true, fc => fc.UseImplicitUsings);
+            AssertSetting($"<Project><UseWPF>{value}</UseWPF></Project>", fc => fc.UseWpf, expected);
         }
 
-        [Fact]
-        public void TestFileContent_ImplicitUsings2()
+        [Theory]
+        [InlineData("false", false)]
+        [InlineData("true", true)]
+        public void TestFileContent_UseWindowsForms(string value, bool expected)
         {
-            CsProjSettingsTest("<ImplicitUsings>enable</ImplicitUsings>", true, fc => fc.UseImplicitUsings);
-        }
-
-        [Fact]
-        public void TestFileContent_UseWpf0()
-        {
-            CsProjSettingsTest("<UseWPF>false</UseWPF>", false, fc => fc.UseWpf);
-        }
-
-        [Fact]
-        public void TestFileContent_UseWpf1()
-        {
-            CsProjSettingsTest("<UseWPF>true</UseWPF>", true, fc => fc.UseWpf);
-        }
-
-        [Fact]
-        public void TestFileContent_UseWindowsForms0()
-        {
-            CsProjSettingsTest("<UseWindowsForms>false</UseWindowsForms>", false, fc => fc.UseWindowsForms);
-        }
-
-        [Fact]
-        public void TestFileContent_UseWindowsForms1()
-        {
-            CsProjSettingsTest("<UseWindowsForms>true</UseWindowsForms>", true, fc => fc.UseWindowsForms);
+            AssertSetting($"<Project><UseWindowsForms>{value}</UseWindowsForms></Project>", fc => fc.UseWindowsForms, expected);
         }
 
         [Fact]
         public void TestFileContent_ImplicitUsingsAdditional()
         {
-            // Setup
-            var lines = new List<string>()
-                {
-                    "<Project>",
-                    "<Using Include=\"Ns0.Ns1\" />",
-                    "<Using Include=\"Ns2\" />",
-                    "<Using Remove=\"Ns3\" />",
-                    "</Project>"
-                };
-            var fileContent = new TestFileContent(lines);
+            var fileContent = new TestFileContent(
+            """
+            <Project>
+              <Using Include="Ns0.Ns1" />
+              <Using Include="Ns2" />
+              <Using Remove="Ns3" />
+            </Project>
+            """);
 
-            // Execute
-            var customImplicitUsings = fileContent.CustomImplicitUsings;
-
-            // Verify
-            Assert.Equal(2, customImplicitUsings.Count);
-            Assert.Contains("Ns0.Ns1", customImplicitUsings);
-            Assert.Contains("Ns2", customImplicitUsings);
+            Assert.Equal(2, fileContent.CustomImplicitUsings.Count);
+            Assert.Contains("Ns0.Ns1", fileContent.CustomImplicitUsings);
+            Assert.Contains("Ns2", fileContent.CustomImplicitUsings);
         }
 
         [Fact]
@@ -183,16 +135,10 @@ namespace Semmle.Extraction.Tests
               <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
             </Project>
             """;
-            var lines = input.Split(Environment.NewLine);
-            var fileContent = new TestFileContent(lines);
+            var fileContent = new TestFileContent(input);
 
-            // Execute
-            var isLegacy = fileContent.IsLegacyProjectStructureUsed;
-            var isNew = fileContent.IsNewProjectStructureUsed;
-
-            // Verify
-            Assert.True(isLegacy);
-            Assert.False(isNew);
+            Assert.True(fileContent.IsLegacyProjectStructureUsed);
+            Assert.False(fileContent.IsNewProjectStructureUsed);
         }
 
         [Fact]
@@ -207,17 +153,10 @@ namespace Semmle.Extraction.Tests
              </PropertyGroup>
             </Project>
             """;
-            var lines = input.Split(Environment.NewLine);
+            var fileContent = new TestFileContent(input);
 
-            var fileContent = new TestFileContent(lines);
-
-            // Execute
-            var isLegacy = fileContent.IsLegacyProjectStructureUsed;
-            var isNew = fileContent.IsNewProjectStructureUsed;
-
-            // Verify
-            Assert.True(isNew);
-            Assert.False(isLegacy);
+            Assert.True(fileContent.IsNewProjectStructureUsed);
+            Assert.False(fileContent.IsLegacyProjectStructureUsed);
         }
 
         [Fact]
@@ -245,7 +184,7 @@ namespace Semmle.Extraction.Tests
               </msb:PropertyGroup>
             </msb:Project>
             """;
-            var fileContent = new TestFileContent(new[] { input });
+            var fileContent = new TestFileContent(input);
 
             Assert.Equal(2, fileContent.AllPackages.Count);
             Assert.Contains(new PackageReference("my.package", PackageReferenceSource.SdkCsProj), fileContent.AllPackages);
@@ -275,7 +214,7 @@ namespace Semmle.Extraction.Tests
               -->
             </Project>
             """;
-            var fileContent = new TestFileContent(new[] { input });
+            var fileContent = new TestFileContent(input);
 
             Assert.Empty(fileContent.AllPackages);
             Assert.Empty(fileContent.CustomImplicitUsings);
@@ -303,7 +242,7 @@ namespace Semmle.Extraction.Tests
               <PackageReference Include="Ignored.Package" />
             </packages>
             """;
-            var fileContent = new TestFileContent(new[] { input }, "PACKAGES.CONFIG");
+            var fileContent = new TestFileContent(input, "PACKAGES.CONFIG");
 
             Assert.Equal(2, fileContent.AllPackages.Count);
             Assert.Contains(new PackageReference("my.package", PackageReferenceSource.PackagesConfig), fileContent.AllPackages);
